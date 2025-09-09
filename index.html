@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Facebook Link Founder - JSON Edition</title>
+    <title>Facebook Link Founder - Data Table Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -61,7 +62,7 @@
         <div class="relative">
             <div class="text-center">
                 <h1 class="text-3xl font-bold text-blue-600 dark:text-blue-400">Facebook Link Founder</h1>
-                <p class="text-gray-500 dark:text-gray-400">JSON Database Edition</p>
+                <p class="text-gray-500 dark:text-gray-400">Persistent Browser Database Edition</p>
             </div>
             <div class="absolute top-0 right-0">
                 <!-- Menu -->
@@ -71,10 +72,10 @@
                     </button>
                     <div id="menu-dropdown" class="menu-transition menu-hidden absolute right-0 mt-2 w-56 bg-white dark:bg-gray-700 rounded-md shadow-lg z-10 ring-1 ring-black ring-opacity-5">
                         <div class="py-1">
-                            <span class="block px-4 py-2 text-xs text-gray-400">Database Operations</span>
-                            <label for="import-json-file" class="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer">Import .json File...</label>
-                            <input type="file" id="import-json-file" class="hidden" accept=".json">
-                            <button id="export-json-btn" class="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">Export as .json...</button>
+                            <span class="block px-4 py-2 text-xs text-gray-400">File Operations</span>
+                            <label for="import-file" class="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer">Import .txt File...</label>
+                            <input type="file" id="import-file" class="hidden" accept=".txt">
+                            <button id="export-btn" class="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">Export as .txt...</button>
                         </div>
                         <div class="border-t border-gray-200 dark:border-gray-600"></div>
                          <div class="py-1">
@@ -127,8 +128,8 @@
         // --- DOM Elements ---
         const menuToggleButton = document.getElementById('menu-toggle-btn');
         const menuDropdown = document.getElementById('menu-dropdown');
-        const importJsonInput = document.getElementById('import-json-file');
-        const exportJsonButton = document.getElementById('export-json-btn');
+        const importInput = document.getElementById('import-file');
+        const exportButton = document.getElementById('export-btn');
         const exitButton = document.getElementById('exit-btn');
         const linkInput = document.getElementById('fb-link');
         const findButton = document.getElementById('find-btn');
@@ -139,8 +140,8 @@
         const noLinksMessage = document.getElementById('no-links-message');
 
         // --- IndexedDB Configuration ---
-        const DB_NAME = 'FacebookLinkFounderDB_JSON';
-        const LINKS_STORE_NAME = 'links';
+        const DB_NAME = 'FacebookLinkFounderDB';
+        const STORE_NAME = 'links';
         let db;
         
         // --- DB Helper Functions ---
@@ -149,9 +150,10 @@
                 const request = indexedDB.open(DB_NAME, 1);
                 request.onupgradeneeded = event => {
                     const db = event.target.result;
-                    if (!db.objectStoreNames.contains(LINKS_STORE_NAME)) {
-                        const linksStore = db.createObjectStore(LINKS_STORE_NAME, { keyPath: 'id', autoIncrement: true });
-                        linksStore.createIndex('url', 'url', { unique: true });
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                        store.createIndex('url', 'url', { unique: true });
+                        store.createIndex('date', 'date', { unique: false });
                     }
                 };
                 request.onsuccess = event => { db = event.target.result; resolve(db); };
@@ -159,56 +161,47 @@
             });
         }
 
-        function getStore(storeName, mode) {
-            return db.transaction(storeName, mode).objectStore(storeName);
-        }
-
-        async function addLink(url, date) {
-            const store = getStore(LINKS_STORE_NAME, 'readwrite');
+        function addLink(url, date) {
             return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
                 const request = store.add({ url, date });
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = (e) => reject(e.target.error);
+                transaction.oncomplete = () => resolve(request.result);
+                transaction.onerror = event => reject('Add Error: ' + event.target.error);
             });
         }
         
-        async function getLinkByUrl(url) {
-            const store = getStore(LINKS_STORE_NAME, 'readonly');
-            const index = store.index('url');
+        function getLinkByUrl(url) {
             return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readonly');
+                const store = transaction.objectStore(STORE_NAME);
+                const index = store.index('url');
                 const request = index.get(url);
                 request.onsuccess = () => resolve(request.result);
-                request.onerror = (e) => reject(e.target.error);
+                request.onerror = (event) => reject('Get Error: ' + event.target.error);
             });
         }
         
-        async function deleteLink(id) {
-            const store = getStore(LINKS_STORE_NAME, 'readwrite');
+        function deleteLink(id) {
             return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
                 const request = store.delete(id);
-                request.onsuccess = () => resolve();
-                request.onerror = (e) => reject(e.target.error);
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = event => reject('Delete Error: ' + event.target.error);
             });
         }
 
-        async function getAllLinks() {
-            const store = getStore(LINKS_STORE_NAME, 'readonly');
+        function getAllLinks() {
             return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readonly');
+                const store = transaction.objectStore(STORE_NAME);
                 const request = store.getAll();
                 request.onsuccess = () => resolve(request.result);
-                request.onerror = (e) => reject(e.target.error);
+                request.onerror = event => reject('GetAll Error: ' + event.target.error);
             });
         }
         
-        async function clearLinksStore() {
-             const store = getStore(LINKS_STORE_NAME, 'readwrite');
-             return new Promise((resolve, reject) => {
-                const request = store.clear();
-                request.onsuccess = () => resolve();
-                request.onerror = (e) => reject(e.target.error);
-            });
-        }
-
         // --- Main Application Logic ---
         async function init() {
             try {
@@ -217,7 +210,7 @@
                 tableLoader.classList.add('hidden');
                 tableContainer.classList.remove('hidden');
             } catch (error) {
-                console.error("Initialization Error:", error);
+                console.error(error);
                 displayMessage('Could not load database.', 'red');
                 tableLoader.classList.add('hidden');
             }
@@ -229,84 +222,66 @@
                 displayMessage("Please enter a valid Facebook link.", "red");
                 return;
             }
-            try {
-                const existingLink = await getLinkByUrl(url);
-                if (existingLink) {
-                    displayMessage("Link is already in the database.", "red");
-                } else {
-                    await addLink(url, new Date().toISOString());
-                    displayMessage("Link saved to database!", "green");
+
+            const existingLink = await getLinkByUrl(url);
+            if (existingLink) {
+                displayMessage("This Facebook Link is Already in the Database", "red");
+            } else {
+                try {
+                    await addLink(url, new Date());
+                    displayMessage("Link Saved to Database!", "green");
                     await refreshTable();
+                } catch (error) {
+                    displayMessage("Error saving link.", "red");
+                    console.error(error);
                 }
-            } catch (error) {
-                 displayMessage("Error saving link.", "red");
-                 console.error("Save Error:", error);
             }
             linkInput.value = '';
         }
 
-        async function handleJsonImport(event) {
+        async function handleFileImport(event) {
             hideMenu();
             const file = event.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
             reader.onload = async (e) => {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    if (!data.links || !Array.isArray(data.links)) {
-                        throw new Error("Invalid JSON format. Expected a 'links' array.");
+                const content = e.target.result;
+                const lines = content.split('\n').filter(line => isValidFacebookUrl(line.trim()));
+                let newLinksCount = 0;
+                
+                for (const url of lines) {
+                    const existing = await getLinkByUrl(url.trim());
+                    if (!existing) {
+                        try {
+                           await addLink(url.trim(), new Date());
+                           newLinksCount++;
+                        } catch(e) { /* Ignore duplicate errors during bulk import */ }
                     }
-                    
-                    await clearLinksStore();
-                    
-                    let importedCount = 0;
-                    // Use a transaction for bulk adding
-                    const transaction = db.transaction(LINKS_STORE_NAME, 'readwrite');
-                    const store = transaction.objectStore(LINKS_STORE_NAME);
-                    
-                    for (const link of data.links) {
-                        if (link.url && link.date && isValidFacebookUrl(link.url)) {
-                            store.add({ url: link.url, date: link.date });
-                            importedCount++;
-                        }
-                    }
-                    
-                    transaction.oncomplete = async () => {
-                         displayMessage(`Imported ${importedCount} links from JSON.`, 'green');
-                         await refreshTable();
-                    };
-                     transaction.onerror = (e) => {
-                        displayMessage('Error during bulk import.', 'red');
-                        console.error("Bulk Add Error:", e.target.error);
-                    };
-
-                } catch(error) {
-                    displayMessage('Error reading or parsing JSON file.', 'red');
-                    console.error("Import Error:", error);
                 }
+                
+                displayMessage(`${newLinksCount} new links were imported successfully.`, 'green');
+                if (newLinksCount > 0) await refreshTable();
             };
             reader.readAsText(file);
-            event.target.value = null; // Reset for re-upload
+            event.target.value = null;
         }
-
-        async function handleJsonExport() {
+        
+        async function handleExport() {
             hideMenu();
             const links = await getAllLinks();
             if (links.length === 0) {
-                displayMessage("Database is empty. Nothing to export.", "red");
+                displayMessage("No links to export.", "red");
                 return;
             }
-
-            const exportData = {
-                export_date: new Date().toISOString(),
-                link_count: links.length,
-                links: links.map(({ id, ...rest }) => rest) // Export without internal id
-            };
-            
-            const fileContent = JSON.stringify(exportData, null, 2); // Pretty print JSON
-            downloadFile(fileContent, `facebook_db_export_${new Date().toISOString().slice(0,10)}.json`, 'application/json');
-            displayMessage(`Database exported to JSON with ${links.length} links!`, 'green');
+            const fileContent = links.map(link => link.url).join('\n');
+            const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `facebook_links_${new Date().toISOString().slice(0,10)}.txt`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            displayMessage(`${links.length} links exported!`, 'green');
         }
 
         async function handleDeleteClick(id) {
@@ -316,26 +291,27 @@
                 await refreshTable();
             } catch(error) {
                 displayMessage('Error deleting link.', 'red');
-                console.error("Delete Error:", error);
+                console.error(error);
             }
         }
 
         // --- Table Rendering ---
         async function refreshTable() {
             const links = await getAllLinks();
-            tableBody.innerHTML = '';
+            tableBody.innerHTML = ''; // Clear existing rows
             
             if (links.length === 0) {
                 noLinksMessage.classList.remove('hidden');
             } else {
                 noLinksMessage.classList.add('hidden');
-                links.sort((a, b) => new Date(b.date) - new Date(a.date)); // Newest first
+                // Sort by date, newest first
+                links.sort((a, b) => b.date - a.date);
                 links.forEach(link => {
                     const row = document.createElement('tr');
                     row.className = 'dark:text-gray-200';
                     row.innerHTML = `
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">${link.id}</td>
-                        <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-300 truncate max-w-xs">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 truncate max-w-xs">
                             <a href="${link.url}" target="_blank" rel="noopener noreferrer" class="hover:underline">${link.url}</a>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">${new Date(link.date).toLocaleString()}</td>
@@ -354,30 +330,18 @@
             const p = document.createElement('p');
             p.textContent = text;
             p.className = 'font-semibold message-enter';
-            const colorClass = color === 'red' ? 'text-red-500' : (color === 'green' ? 'text-green-500' : 'text-gray-500');
-            p.classList.add(colorClass);
+            let textColorClass = color === 'red' ? 'text-red-500' : (color === 'green' ? 'text-green-500' : 'text-gray-500');
+            p.classList.add(textColorClass);
             messageContainer.appendChild(p);
             setTimeout(() => p.classList.add('message-enter-active'), 10);
-        }
-        
-        function downloadFile(content, fileName, contentType) {
-            const blob = new Blob([content], { type: contentType });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(a.href);
         }
 
         function isValidFacebookUrl(str) {
             if (!str) return false;
-            try { 
+            try {
                 const url = new URL(str);
-                return url.hostname.includes('facebook.com') || url.hostname.includes('fb.com'); 
-            }
-            catch (_) { return false; }
+                return (url.hostname.includes('facebook.com') || url.hostname.includes('fb.com'));
+            } catch (_) { return false; }
         }
 
         function handleExit() { window.close(); }
@@ -386,13 +350,11 @@
         // --- Event Listeners ---
         menuToggleButton.addEventListener('click', (e) => { e.stopPropagation(); menuDropdown.classList.toggle('menu-hidden'); menuDropdown.classList.toggle('menu-visible'); });
         window.addEventListener('click', (e) => { if (!menuDropdown.contains(e.target) && !menuToggleButton.contains(e.target)) hideMenu(); });
-        
-        importJsonInput.addEventListener('change', handleJsonImport);
-        exportJsonButton.addEventListener('click', handleJsonExport);
+        importInput.addEventListener('change', handleFileImport);
+        exportButton.addEventListener('click', handleExport);
         exitButton.addEventListener('click', handleExit);
         findButton.addEventListener('click', handleSearchAndSave);
         linkInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleSearchAndSave(); });
-        
         tableBody.addEventListener('click', (e) => {
             if (e.target.classList.contains('delete-btn')) {
                 const id = parseInt(e.target.getAttribute('data-id'), 10);
